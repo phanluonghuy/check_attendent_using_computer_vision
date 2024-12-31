@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:final_cv/Models/course_info_model.dart';
 import 'package:final_cv/Models/session_info.dart';
@@ -6,10 +9,16 @@ import 'package:final_cv/Screens/error_page.dart';
 import 'package:final_cv/bluetooth/advertising.dart';
 import 'package:final_cv/services/database.dart';
 import 'package:final_cv/services/get_sessions.dart';
+import 'package:final_cv/toastUtil.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
+
+import 'package:http/http.dart' as http;
+import 'package:toastification/toastification.dart';
 
 class StudentCourseDetailScreen extends StatefulWidget {
   final Course course;
@@ -150,7 +159,13 @@ class SessionManager extends StatefulWidget {
 class _SessionManagerState extends State<SessionManager> {
   List<Session> sessions = [];
   bool isLoading = true;
-  bool isAdvertising = false;
+  bool isChecking_01 = false;
+  bool isChecking_02 = false;
+  bool isCheckMSSV = false;
+
+  List<int> mssvByte = [];
+
+  String API_URL = 'https://f801-14-191-109-93.ngrok-free.app';
 
   Future<void> fetchSessions() async {
     var sessions = await getSessions(
@@ -167,6 +182,157 @@ class _SessionManagerState extends State<SessionManager> {
     fetchSessions();
   }
 
+  Future<void> printImageSize(File image) async {
+    if (image != null) {
+      // Get the size of the image in bytes
+      int imageSizeInBytes = await image.length();
+
+      // Convert bytes to KB and MB for better readability
+      double imageSizeInKB = imageSizeInBytes / 1024; // Size in KB
+      double imageSizeInMB = imageSizeInKB / 1024; // Size in MB
+
+      // Print the file size in bytes, KB, and MB
+      print('Image size: ${imageSizeInBytes} bytes');
+      print('Image size: ${imageSizeInKB.toStringAsFixed(2)} KB');
+      print('Image size: ${imageSizeInMB.toStringAsFixed(2)} MB');
+    }
+  }
+
+  Future<void> sendMSSV() async {
+    final ImagePicker _picker = ImagePicker();
+    final XFile? image =
+        await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+
+    if (image != null) {
+      File imageFile = File(image.path);
+      // Send the image to the API
+
+      printImageSize(imageFile);
+
+      // Load the image from the file
+      List<int> imageBytes = await image.readAsBytes();
+      img.Image? originalImage =
+          img.decodeImage(Uint8List.fromList(imageBytes));
+
+      if (originalImage != null) {
+        // Resize the image (for example, to 800x800 pixels)
+        // img.Image resizedImage =
+        //     img.copyResize(originalImage, width: 800, height: 800);
+
+        // Compress the image (optional: set quality from 0 to 100)
+        // mssvByte =
+        //     img.encodeJpg(resizedImage, quality: 100);
+        mssvByte = imageBytes;
+
+        // Create a multipart request
+        var request =
+            http.MultipartRequest('POST', Uri.parse('$API_URL/getMSSV'));
+
+        // Add the image bytes to the request with the key 'image1'
+        request.files.add(http.MultipartFile.fromBytes(
+            'image1', // Field name (key)
+            mssvByte, // Compressed image as bytes
+            filename: 'resized_image.jpg' // Set a new filename
+            ));
+
+        try {
+          // Send the request
+          var response = await request.send();
+
+          // Read the response body
+          var responseData = await response.stream.bytesToString();
+          String id = checkStudentId(responseData);
+          if (id.isNotEmpty) {
+            print(id);
+          } else {
+            print(id);
+          }
+        } catch (e) {
+          print('Error: $e');
+        }
+      }
+    }
+  }
+
+  Future<void> sendFace() async {
+    final ImagePicker _picker = ImagePicker();
+    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+
+    if (image != null) {
+      File imageFile = File(image.path);
+      // Send the image to the API
+
+      printImageSize(imageFile);
+
+      // Load the image from the file
+      List<int> imageBytes = await image.readAsBytes();
+      img.Image? originalImage =
+          img.decodeImage(Uint8List.fromList(imageBytes));
+
+      if (originalImage != null) {
+        // Resize the image (for example, to 800x800 pixels)
+        img.Image resizedImage =
+            img.copyResize(originalImage, width: 800, height: 800);
+
+        // Compress the image (optional: set quality from 0 to 100)
+        List<int> compressImage = img.encodeJpg(resizedImage, quality: 100);
+
+        // Create a multipart request
+        var request =
+            http.MultipartRequest('POST', Uri.parse('$API_URL/compare'));
+
+        // Add the image bytes to the request with the key 'image1'
+        request.files.add(http.MultipartFile.fromBytes(
+            'image1', // Field name (key)
+            mssvByte, // Compressed image as bytes
+            filename: 'resized_image.jpg' // Set a new filename
+            ));
+
+        request.files.add(http.MultipartFile.fromBytes(
+            'image2', // Field name (key)
+            compressImage, // Compressed image as bytes
+            filename: 'resized_image2.jpg' // Set a new filename
+            ));
+
+        try {
+          // Send the request
+          var response = await request.send();
+
+          // Read the response body
+          var responseData = await response.stream.bytesToString();
+          Map<String, dynamic> data = jsonDecode(responseData);
+          print(data.toString());
+
+          // Check if the key 'student_id_1' exists
+          if (data.containsKey('prediction')) {
+            (data['prediction']==1) ? AppToast.showError("No Match", context) : AppToast.showSuccess("Match", context);
+          } else {
+            AppToast.showError(data['error'], context);
+          }
+        } catch (e) {
+          print('Error: $e');
+        }
+      }
+    }
+  }
+
+  String checkStudentId(String responseData) {
+    // Parse the response data (assuming it's a JSON string)
+    Map<String, dynamic> data = jsonDecode(responseData);
+    print(data.toString());
+
+    // Check if the key 'student_id_1' exists
+    if (data.containsKey('student_id_1')) {
+      setState(() {
+        isCheckMSSV = true;
+      });
+      AppToast.showSuccess(data['student_id_1'], context);
+      return data['student_id_1'];
+    } else {
+      return data['error'];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -174,44 +340,42 @@ class _SessionManagerState extends State<SessionManager> {
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: ElevatedButton(
-            onPressed: isAdvertising
+            onPressed: isCheckMSSV
                 ? null
                 : () async {
                     setState(() {
-                      isAdvertising = true;
+                      isChecking_01 = true;
                     });
-                    var user = FirebaseAuth.instance.currentUser;
-                    List<String> checkingStudent = [];
-                    // Reference to the 'checking' document
-                    DocumentSnapshot docSnapshot = await FirebaseFirestore
-                        .instance
-                        .collection('Checking')
-                        .doc('checking')
-                        .get();
 
-                    if (docSnapshot.exists) {
-                      // Retrieve the 'students' array
-                      List<dynamic> students = docSnapshot['students'];
-                      checkingStudent = students.cast<String>();
-                      // print('Students: $checkingStudent');d
-                    } else {
-                      print('Document does not exist');
-                    }
-                    checkingStudent.add(user?.email.toString().substring(0,11) ?? " ");
-
-                    await FirebaseFirestore.instance
-                        .collection('Checking')
-                        .doc('checking')
-                        .set({
-                      'students': checkingStudent,
-                    }, SetOptions(merge: true));
-                    // await startAdvertising(id: widget.entryNumber);
-                    // // stop after 30 seconds
-                    // await Future.delayed(const Duration(seconds: 60), () {
-                    //   stopAdvertising();
-                    // });
+                    await sendMSSV();
+                    print("Check attendance success");
+                    // var user = FirebaseAuth.instance.currentUser;
+                    // List<String> checkingStudent = [];
+                    // // Reference to the 'checking' document
+                    // DocumentSnapshot docSnapshot = await FirebaseFirestore
+                    //     .instance
+                    //     .collection('Checking')
+                    //     .doc('checking')
+                    //     .get();
+                    //
+                    // if (docSnapshot.exists) {
+                    //   // Retrieve the 'students' array
+                    //   List<dynamic> students = docSnapshot['students'];
+                    //   checkingStudent = students.cast<String>();
+                    //   // print('Students: $checkingStudent');d
+                    // } else {
+                    //   print('Document does not exist');
+                    // }
+                    // checkingStudent.add(user?.email.toString().substring(0,11) ?? " ");
+                    //
+                    // await FirebaseFirestore.instance
+                    //     .collection('Checking')
+                    //     .doc('checking')
+                    //     .set({
+                    //   'students': checkingStudent,
+                    // }, SetOptions(merge: true));
                     setState(() {
-                      isAdvertising = false;
+                      isChecking_01 = false;
                     });
                   },
             style: ElevatedButton.styleFrom(
@@ -232,8 +396,75 @@ class _SessionManagerState extends State<SessionManager> {
                     1.2, // Increase letter spacing for a more open look
               ),
             ),
-            child: const Text(
-              'Mark Attendance',
+            child: Text(
+              (isChecking_01) ? 'Checking...' : 'Check Student ID',
+              style: TextStyle(
+                fontSize: 16, // Slightly larger text for better readability
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ElevatedButton(
+            onPressed: !isCheckMSSV
+                ? null
+                : () async {
+                    setState(() {
+                      isChecking_02 = true;
+                    });
+
+                    await sendFace();
+                    print("Check attendance success");
+                    // var user = FirebaseAuth.instance.currentUser;
+                    // List<String> checkingStudent = [];
+                    // // Reference to the 'checking' document
+                    // DocumentSnapshot docSnapshot = await FirebaseFirestore
+                    //     .instance
+                    //     .collection('Checking')
+                    //     .doc('checking')
+                    //     .get();
+                    //
+                    // if (docSnapshot.exists) {
+                    //   // Retrieve the 'students' array
+                    //   List<dynamic> students = docSnapshot['students'];
+                    //   checkingStudent = students.cast<String>();
+                    //   // print('Students: $checkingStudent');d
+                    // } else {
+                    //   print('Document does not exist');
+                    // }
+                    // checkingStudent.add(user?.email.toString().substring(0,11) ?? " ");
+                    //
+                    // await FirebaseFirestore.instance
+                    //     .collection('Checking')
+                    //     .doc('checking')
+                    //     .set({
+                    //   'students': checkingStudent,
+                    // }, SetOptions(merge: true));
+                    setState(() {
+                      isChecking_02 = false;
+                    });
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor:
+                  Colors.blueAccent, // A more vibrant shade of blue
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(12.0), // Softer rounded corners
+              ),
+              elevation:
+                  3, // Slightly higher elevation for a more pronounced shadow
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12), // Improved padding for a better tactile feel
+              textStyle: const TextStyle(
+                letterSpacing:
+                    1.2, // Increase letter spacing for a more open look
+              ),
+            ),
+            child: Text(
+              (isChecking_02) ? 'Checking...' : 'Check Attendance',
               style: TextStyle(
                 fontSize: 16, // Slightly larger text for better readability
               ),

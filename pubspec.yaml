@@ -45,6 +45,10 @@ dependencies:
   intl: ^0.20.1
   file_picker: ^8.1.6
   csv: ^6.0.0
+  image_picker: ^1.1.2
+  http: ^1.2.2
+  image: ^4.5.2
+  toastification: ^2.3.0
 
 dev_dependencies:
   flutter_test:
