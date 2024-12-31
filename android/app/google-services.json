@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "945066306171",
+    "firebase_url": "https://final-computer-vision-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "final-computer-vision",
+    "storage_bucket": "final-computer-vision.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:945066306171:android:1baa62b817f155b785d0de",
+        "android_client_info": {
+          "package_name": "com.example.final_cv"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAK4umtRvCfyAnJqx_VJI_811RPzColfYE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
