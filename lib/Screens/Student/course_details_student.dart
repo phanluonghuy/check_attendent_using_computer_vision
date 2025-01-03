@@ -165,7 +165,7 @@ class _SessionManagerState extends State<SessionManager> {
 
   List<int> mssvByte = [];
 
-  String API_URL = 'https://f801-14-191-109-93.ngrok-free.app';
+  String API_URL = 'http://192.168.8.129:8000';
 
   Future<void> fetchSessions() async {
     var sessions = await getSessions(
@@ -306,6 +306,7 @@ class _SessionManagerState extends State<SessionManager> {
           // Check if the key 'student_id_1' exists
           if (data.containsKey('prediction')) {
             (data['prediction']==1) ? AppToast.showError("No Match", context) : AppToast.showSuccess("Match", context);
+            if (data['prediction']==0) await checkAttendance();
           } else {
             AppToast.showError(data['error'], context);
           }
@@ -314,6 +315,57 @@ class _SessionManagerState extends State<SessionManager> {
         }
       }
     }
+  }
+
+  Future<bool> checkTime() async {
+    bool isChecking = false; // Default value
+
+    try {
+      // Fetch the document snapshot
+      DocumentSnapshot snapshot = await FirebaseFirestore.instance
+          .collection('Courses')
+          .doc(widget.courseId)
+          .get();
+
+      // Check if the field exists and retrieve its value
+      if (snapshot.exists) {
+        isChecking = snapshot.get('isCheckingAttendance') ?? false;
+      }
+    } catch (e) {
+      print('Error fetching isCheckingAttendance: $e');
+    }
+    return isChecking;
+    print('isChecking: $isChecking');
+  }
+
+  Future<void> checkAttendance() async {
+    var user = FirebaseAuth.instance.currentUser;
+    List<String> checkingStudent = [];
+    // Reference to the 'checking' document
+    DocumentSnapshot docSnapshot = await FirebaseFirestore
+        .instance
+        .collection('Checking')
+        .doc('checking')
+        .get();
+
+    if (docSnapshot.exists) {
+      // Retrieve the 'students' array
+      List<dynamic> students = docSnapshot['students'];
+      checkingStudent = students.cast<String>();
+      // print('Students: $checkingStudent');d
+    } else {
+      print('Document does not exist');
+    }
+    checkingStudent.add(user?.email.toString().substring(0,11) ?? " ");
+
+    await FirebaseFirestore.instance
+        .collection('Checking')
+        .doc('checking')
+        .set({
+      'students': checkingStudent,
+    }, SetOptions(merge: true));
+    await Future.delayed(const Duration(seconds: 3));
+    AppToast.showSuccess("Check attendance success", context);
   }
 
   String checkStudentId(String responseData) {
@@ -329,6 +381,7 @@ class _SessionManagerState extends State<SessionManager> {
       AppToast.showSuccess(data['student_id_1'], context);
       return data['student_id_1'];
     } else {
+      AppToast.showError(data['error'], context);
       return data['error'];
     }
   }
@@ -346,34 +399,15 @@ class _SessionManagerState extends State<SessionManager> {
                     setState(() {
                       isChecking_01 = true;
                     });
-
+                    bool isTime = await checkTime();
+                    if (!isTime) {
+                      AppToast.showError("Not in time to check", context);
+                      setState(() {
+                        isChecking_01 = false;
+                      });
+                      return;
+                    }
                     await sendMSSV();
-                    print("Check attendance success");
-                    // var user = FirebaseAuth.instance.currentUser;
-                    // List<String> checkingStudent = [];
-                    // // Reference to the 'checking' document
-                    // DocumentSnapshot docSnapshot = await FirebaseFirestore
-                    //     .instance
-                    //     .collection('Checking')
-                    //     .doc('checking')
-                    //     .get();
-                    //
-                    // if (docSnapshot.exists) {
-                    //   // Retrieve the 'students' array
-                    //   List<dynamic> students = docSnapshot['students'];
-                    //   checkingStudent = students.cast<String>();
-                    //   // print('Students: $checkingStudent');d
-                    // } else {
-                    //   print('Document does not exist');
-                    // }
-                    // checkingStudent.add(user?.email.toString().substring(0,11) ?? " ");
-                    //
-                    // await FirebaseFirestore.instance
-                    //     .collection('Checking')
-                    //     .doc('checking')
-                    //     .set({
-                    //   'students': checkingStudent,
-                    // }, SetOptions(merge: true));
                     setState(() {
                       isChecking_01 = false;
                     });
@@ -416,31 +450,8 @@ class _SessionManagerState extends State<SessionManager> {
 
                     await sendFace();
                     print("Check attendance success");
-                    // var user = FirebaseAuth.instance.currentUser;
-                    // List<String> checkingStudent = [];
-                    // // Reference to the 'checking' document
-                    // DocumentSnapshot docSnapshot = await FirebaseFirestore
-                    //     .instance
-                    //     .collection('Checking')
-                    //     .doc('checking')
-                    //     .get();
-                    //
-                    // if (docSnapshot.exists) {
-                    //   // Retrieve the 'students' array
-                    //   List<dynamic> students = docSnapshot['students'];
-                    //   checkingStudent = students.cast<String>();
-                    //   // print('Students: $checkingStudent');d
-                    // } else {
-                    //   print('Document does not exist');
-                    // }
-                    // checkingStudent.add(user?.email.toString().substring(0,11) ?? " ");
-                    //
-                    // await FirebaseFirestore.instance
-                    //     .collection('Checking')
-                    //     .doc('checking')
-                    //     .set({
-                    //   'students': checkingStudent,
-                    // }, SetOptions(merge: true));
+
+
                     setState(() {
                       isChecking_02 = false;
                     });
